@@ -43,7 +43,7 @@ if (isFirebaseConfigured) {
   auth = getAuth(app);
   db = getFirestore(app);
 }
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const appId = 'nutriplate_aahbiodun_stable';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
 const generateId = () => Math.random().toString(36).substr(2, 9);
