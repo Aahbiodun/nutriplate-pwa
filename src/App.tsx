@@ -9,7 +9,7 @@ import {
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY',
@@ -23,6 +23,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ENABLE OFFLINE CACHING
+enableIndexedDbPersistence(db).catch(() => {});
 
 // STABLE ID: PROTECTS YOUR LOGS AND FOODS
 const appId = 'nutriplate_aahbiodun_stable'; 
@@ -58,16 +61,17 @@ export default function App() {
     if (!user) return;
     const userPath = `artifacts/${appId}/users/${user.uid}`;
     
-    // Fetch Goal
     onSnapshot(doc(db, `${userPath}/settings/goal`), (doc) => {
       if (doc.exists()) setDailyGoal(doc.data().value);
     });
 
     onSnapshot(collection(db, `${userPath}/foods`), (s) => {
       const data = s.docs.map(d => ({id: d.id, ...d.data()}));
-      setFoods(data.sort((a, b) => a.name.localeCompare(b.name))); // SORTED ALPHABETICALLY
+      setFoods(data.sort((a, b) => a.name.localeCompare(b.name)));
     });
+    
     onSnapshot(collection(db, `${userPath}/plates`), (s) => setPhysicalPlates(s.docs.map(d => ({id: d.id, ...d.data()}))));
+    
     onSnapshot(collection(db, `${userPath}/logs`), (s) => {
         setLogs(s.docs.map(d => ({id: d.id, ...d.data()})));
         setIsLoading(false);
@@ -114,7 +118,7 @@ export default function App() {
       <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end">
         <div className="bg-white rounded-t-[32px] p-6 pb-12 overflow-y-auto max-h-[90vh]">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">Log Food</h2>
+            <h2 className="text-xl font-bold">Log Calories</h2>
             <button onClick={() => setShowAddLog(false)}><X /></button>
           </div>
           <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
@@ -141,11 +145,11 @@ export default function App() {
                   }}/>
                 </div>
               ))}
-              <button onClick={() => setMealIngredients([...mealIngredients, {foodId:'', percentage:''}])} className="text-emerald-600 text-xs font-bold">+ Add Item</button>
+              <button onClick={() => setMealIngredients([...mealIngredients, {foodId:'', percentage:''}])} className="text-emerald-600 text-xs font-bold font-black">+ Add Item</button>
             </div>
           )}
           <div className="bg-slate-50 p-4 rounded-xl border mb-6">
-            <div className="flex justify-between items-center mb-4 text-xs font-bold uppercase text-slate-400 tracking-widest">
+            <div className="flex justify-between items-center mb-4 text-xs font-bold uppercase text-slate-400">
                 <span>Use Plate Weight?</span>
                 <input type="checkbox" checked={usePlate} onChange={e => setUsePlate(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
             </div>
@@ -155,29 +159,9 @@ export default function App() {
                     {physicalPlates.map(p => <option key={p.id} value={p.id}>{p.name} ({p.weightGrams}g)</option>)}
                 </select>
             )}
-            <input className="w-full bg-white p-4 rounded-xl border font-bold" placeholder="Gross Scale Weight" type="number" value={weightInput} onChange={e => setWeightInput(e.target.value)} />
+            <input className="w-full bg-white p-4 rounded-xl border font-bold" placeholder="Scale Weight" type="number" value={weightInput} onChange={e => setWeightInput(e.target.value)} />
           </div>
-          <button onClick={handleSave} className="w-full bg-emerald-600 text-white font-bold py-5 rounded-2xl shadow-lg">Save {netAmount > 0 ? `${Math.round(netAmount)}g` : ''}</button>
-        </div>
-      </div>
-    );
-  };
-
-  const TargetModal = () => {
-    const [val, setVal] = useState(dailyGoal);
-    const save = async () => {
-      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/settings/goal`), { value: parseInt(val) });
-      setShowTargetModal(false);
-    };
-    return (
-      <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
-        <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl">
-          <h2 className="text-xl font-bold mb-6">Set Daily Target</h2>
-          <input className="w-full bg-slate-50 p-4 rounded-xl border mb-8 outline-none font-black text-2xl text-center" type="number" value={val} onChange={e => setVal(e.target.value)} />
-          <div className="flex gap-3">
-            <button onClick={() => setShowTargetModal(false)} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400">Cancel</button>
-            <button onClick={save} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-xl">Save</button>
-          </div>
+          <button onClick={handleSave} className="w-full bg-emerald-600 text-white font-bold py-5 rounded-2xl shadow-lg">Save {netWeight > 0 ? `${Math.round(netWeight)}g` : ''}</button>
         </div>
       </div>
     );
@@ -198,13 +182,13 @@ export default function App() {
                   <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 1); setCurrentDate(d.toISOString().split('T')[0]); }}><ChevronRight size={24} /></button>
                 </div>
                 <div className="text-center">
-                  <div className="text-6xl font-black">{Math.round(totalCals)}<span className="text-lg font-normal ml-1 opacity-60">kcal</span></div>
+                  <div className="text-6xl font-black">{Math.round(totalCals)}<span className="text-xl font-normal ml-1 opacity-60">kcal</span></div>
                   <div className="text-emerald-100 font-bold text-sm mt-2">{remaining > 0 ? `${Math.round(remaining)} Left` : `${Math.round(Math.abs(remaining))} Over`}</div>
                 </div>
               </div>
-              <div className="flex-1 px-6 -mt-6 overflow-y-auto pb-32 pt-2">
+              <div className="flex-1 px-6 -mt-6 overflow-y-auto pb-32">
                 <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-4 min-h-full">
-                  {dailyLogs.length === 0 ? <div className="text-center py-20 text-slate-300 italic text-sm">No entries for today.</div> : (
+                  {dailyLogs.length === 0 ? <div className="text-center py-20 text-slate-300 italic text-sm">No entries yet.</div> : (
                     <div className="space-y-3">
                       {dailyLogs.map(log => (
                         <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 border rounded-2xl">
@@ -232,13 +216,10 @@ export default function App() {
                 <button onClick={() => setShowAddFood(true)} className="w-full border-2 border-dashed border-slate-200 p-4 rounded-2xl text-slate-400 font-bold mb-4 hover:bg-slate-50 transition-colors">+ New Food</button>
                 {foods.map(f => (
                     <div key={f.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center mb-2 shadow-sm">
-                        <div>
-                          <span className="font-bold block text-slate-700">{f.name}</span>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">{f.caloriesPer100g} kcal/100g</span>
-                        </div>
+                        <div><span className="font-bold block text-slate-700">{f.name}</span><span className="text-[10px] text-slate-400 font-bold uppercase">{f.caloriesPer100g} kcal/100g</span></div>
                         <div className="flex gap-4">
-                          <button onClick={() => setEditingFood(f)} className="text-slate-300 hover:text-emerald-500"><Edit2 size={18}/></button>
-                          <button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/foods`, f.id)); }} className="text-slate-200 hover:text-red-400"><Trash2 size={18}/></button>
+                          <button onClick={() => setEditingFood(f)} className="text-slate-300"><Edit2 size={18}/></button>
+                          <button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/foods`, f.id)); }} className="text-slate-200"><Trash2 size={18}/></button>
                         </div>
                     </div>
                 ))}
@@ -265,7 +246,7 @@ export default function App() {
                   </div>
                 </div>
                 <div onClick={() => setShowTargetModal(true)} className="bg-white p-6 rounded-3xl border shadow-sm flex justify-between items-center active:scale-95 transition-transform cursor-pointer">
-                   <div className="flex items-center gap-3"><Target className="text-emerald-600"/><span className="font-bold text-slate-700">Daily Target</span></div>
+                   <div className="flex items-center gap-3"><Target className="text-emerald-600"/><span className="font-bold text-slate-700">Daily Goal</span></div>
                    <span className="font-black text-emerald-600 text-lg">{dailyGoal} kcal</span>
                 </div>
             </div>
@@ -273,22 +254,19 @@ export default function App() {
 
           {activeTab === 'plates' && (
             <div className="p-6 h-full overflow-y-auto pb-32">
-                <h2 className="text-2xl font-black mb-6">Plates</h2>
+                <h2 className="text-2xl font-black mb-6 text-slate-800">Plates</h2>
                 <button onClick={() => setShowAddPlate(true)} className="w-full border-2 border-dashed border-slate-200 p-4 rounded-2xl text-slate-400 font-bold mb-4">+ Register Plate</button>
                 {physicalPlates.map(p => (
                     <div key={p.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center mb-2 shadow-sm">
                         <span className="font-bold text-slate-700">{p.name}</span>
-                        <div className="flex items-center gap-4">
-                           <span className="font-black text-emerald-600">{p.weightGrams}g</span>
-                           <button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/plates`, p.id)); }} className="text-slate-200"><Trash2 size={18}/></button>
-                        </div>
+                        <div className="flex items-center gap-4"><span className="font-black text-emerald-600">{p.weightGrams}g</span><button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/plates`, p.id)); }} className="text-slate-200"><Trash2 size={18}/></button></div>
                     </div>
                 ))}
             </div>
           )}
         </div>
 
-        <div className="h-24 bg-white border-t flex items-center justify-around shrink-0 z-40 pb-6 px-4 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
+        <div className="h-24 bg-white border-t flex items-center justify-around shrink-0 z-40 pb-6 px-4">
           <button onClick={() => setActiveTab('log')} className={`flex flex-col items-center w-1/4 ${activeTab === 'log' ? 'text-emerald-600' : 'text-slate-300'}`}><Home size={22} /><span className="text-[10px] font-black mt-1 uppercase">Log</span></button>
           <button onClick={() => setActiveTab('foods')} className={`flex flex-col items-center w-1/4 ${activeTab === 'foods' ? 'text-emerald-600' : 'text-slate-300'}`}><Utensils size={22} /><span className="text-[10px] font-black mt-1 uppercase">Registry</span></button>
           <button onClick={() => setActiveTab('trends')} className={`flex flex-col items-center w-1/4 ${activeTab === 'trends' ? 'text-emerald-600' : 'text-slate-300'}`}><BarChart3 size={22} /><span className="text-[10px] font-black mt-1 uppercase">Trends</span></button>
@@ -296,7 +274,21 @@ export default function App() {
         </div>
 
         {showAddLog && <AddLogModal />}
-        {showTargetModal && <TargetModal />}
+        {showTargetModal && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
+            <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl">
+              <h2 className="text-xl font-bold mb-6">Set Daily Target</h2>
+              <input id="tg-v" className="w-full bg-slate-50 p-4 rounded-xl border mb-8 outline-none font-black text-2xl text-center" type="number" defaultValue={dailyGoal} />
+              <div className="flex gap-3">
+                <button onClick={() => setShowTargetModal(false)} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400">Cancel</button>
+                <button onClick={async () => {
+                  const v = document.getElementById('tg-v').value;
+                  if (v) { await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/settings/goal`), { value: parseInt(v) }); setShowTargetModal(false); }
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-xl">Save</button>
+              </div>
+            </div>
+          </div>
+        )}
         {(showAddFood || editingFood) && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
             <div className="bg-white w-full rounded-[2.5rem] p-8">
@@ -304,7 +296,7 @@ export default function App() {
               <input id="f-n" className="w-full bg-slate-50 p-4 rounded-xl border mb-3 outline-none" placeholder="Name" defaultValue={editingFood?.name || ''} />
               <input id="f-c" className="w-full bg-slate-50 p-4 rounded-xl border mb-8 outline-none" placeholder="Cals/100g" type="number" defaultValue={editingFood?.caloriesPer100g || ''} />
               <div className="flex gap-3">
-                <button onClick={() => { setShowAddFood(false); setEditingFood(null); }} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400">Cancel</button>
+                <button onClick={() => { setShowAddFood(false); setEditingFood(null); }} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400 text-sm">Cancel</button>
                 <button onClick={async () => {
                   const n = document.getElementById('f-n').value; const c = document.getElementById('f-c').value;
                   if (n && c) {
@@ -312,7 +304,7 @@ export default function App() {
                     await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/foods`, id), { id, name: n, caloriesPer100g: parseFloat(c) });
                     setShowAddFood(false); setEditingFood(null);
                   }
-                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-xl">Save</button>
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-xl text-sm">Save</button>
               </div>
             </div>
           </div>
