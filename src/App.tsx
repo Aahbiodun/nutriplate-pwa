@@ -45,6 +45,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 
+// --- Firebase Setup ---
 const customFirebaseConfig = {
   apiKey: 'AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY',
   authDomain: 'food-log-abc32.firebaseapp.com',
@@ -53,9 +54,8 @@ const customFirebaseConfig = {
   messagingSenderId: '575042025031',
   appId: '1:575042025031:web:f11b840bb418c3218da362',
   measurementId: 'G-BEDGMLCDT8',
-const firebaseConfig = typeof __firebase_config !== 'undefined'
-  ? JSON.parse(__firebase_config)
-  : customFirebaseConfig;
+};
+;
 
 const isFirebaseConfigured = Object.keys(firebaseConfig).length > 0;
 
