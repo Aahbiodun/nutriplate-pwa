@@ -4,12 +4,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, Utensils, Plus, ChevronLeft, ChevronRight, 
   X, Check, Calendar, Trash2, Disc, Loader2, 
-  AlertTriangle, BarChart3, Edit2, Target, TrendingUp, TrendingDown, Info
+  AlertTriangle, BarChart3, Edit2, Target, TrendingUp, TrendingDown
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
+import { 
+  getFirestore, collection, onSnapshot, doc, setDoc, 
+  deleteDoc, enableIndexedDbPersistence, terminate 
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY',
@@ -24,7 +27,12 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-enableIndexedDbPersistence(db).catch(() => {});
+// ENABLE OFFLINE PERSISTENCE IMMEDIATELY
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    console.warn("Persistence failed:", err.code);
+  });
+}
 
 const appId = 'nutriplate_aahbiodun_stable'; 
 
@@ -47,23 +55,60 @@ export default function App() {
   const [editingFood, setEditingFood] = useState(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
 
+  // --- FASTER OFFLINE STARTUP LOGIC ---
   useEffect(() => {
+    // 1. Set a timeout to force-hide the loading screen if we are offline
+    const forceStart = setTimeout(() => {
+      if (isLoading) {
+        console.log("Offline Mode: Forcing app start from cache");
+        setIsLoading(false);
+      }
+    }, 3000); 
+
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (u) setUser(u);
-      else signInAnonymously(auth).catch(console.error);
+      if (u) {
+        setUser(u);
+      } else {
+        signInAnonymously(auth).catch(() => {
+          // If offline and no local user, we still let the app load
+          setIsLoading(false);
+        });
+      }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+      clearTimeout(forceStart);
+    };
   }, []);
 
   useEffect(() => {
     if (!user) return;
     const userPath = `artifacts/${appId}/users/${user.uid}`;
-    onSnapshot(doc(db, `${userPath}/settings/goal`), (doc) => { if (doc.exists()) setDailyGoal(doc.data().value); });
-    onSnapshot(collection(db, `${userPath}/foods`), (s) => setFoods(s.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => a.name.localeCompare(b.name))));
-    onSnapshot(collection(db, `${userPath}/plates`), (s) => setPhysicalPlates(s.docs.map(d => ({id: d.id, ...d.data()}))));
-    onSnapshot(collection(db, `${userPath}/logs`), (s) => { setLogs(s.docs.map(d => ({id: d.id, ...d.data()}))); setIsLoading(false); });
+    
+    // onSnapshot is great because it returns cached data IMMEDIATELY
+    const unsubGoal = onSnapshot(doc(db, `${userPath}/settings/goal`), (doc) => {
+      if (doc.exists()) setDailyGoal(doc.data().value);
+    });
+
+    const unsubFoods = onSnapshot(collection(db, `${userPath}/foods`), (s) => {
+      const data = s.docs.map(d => ({id: d.id, ...d.data()}));
+      setFoods(data.sort((a, b) => a.name.localeCompare(b.name)));
+    });
+    
+    const unsubPlates = onSnapshot(collection(db, `${userPath}/plates`), (s) => {
+      setPhysicalPlates(s.docs.map(d => ({id: d.id, ...d.data()})));
+    });
+    
+    const unsubLogs = onSnapshot(collection(db, `${userPath}/logs`), (s) => {
+        setLogs(s.docs.map(d => ({id: d.id, ...d.data()})));
+        setIsLoading(false);
+    }, () => setIsLoading(false));
+
+    return () => { unsubGoal(); unsubFoods(); unsubPlates(); unsubLogs(); };
   }, [user]);
 
+  // --- Rest of your perfect calculations and views ---
   const calculateFoodCalories = (foodId, grams) => {
     const food = foods.find(f => f.id === foodId);
     return food ? (grams / 100) * (food.caloriesPer100g || 0) : 0;
@@ -91,6 +136,7 @@ export default function App() {
     const [usePlate, setUsePlate] = useState(false);
     const [selectedPlateId, setSelectedPlateId] = useState('');
     const [weightInput, setWeightInput] = useState('');
+
     const plate = physicalPlates.find(p => p.id === selectedPlateId);
     const netWeight = usePlate ? (parseFloat(weightInput || 0) - (plate?.weightGrams || 0)) : parseFloat(weightInput || 0);
 
@@ -132,88 +178,19 @@ export default function App() {
             </div>
           )}
           <div className="bg-slate-50 p-4 rounded-xl border mb-6">
-            <div className="flex justify-between items-center mb-4 text-xs font-bold uppercase text-slate-400"><span>Use Plate Weight?</span><input type="checkbox" checked={usePlate} onChange={e => setUsePlate(e.target.checked)} className="w-5 h-5 accent-emerald-600" /></div>
-            {usePlate && <select className="w-full bg-white p-3 rounded-lg border mb-3 text-sm" value={selectedPlateId} onChange={e => setSelectedPlateId(e.target.value)}>
-                <option value="">Select Plate...</option>
-                {physicalPlates.map(p => <option key={p.id} value={p.id}>{p.name} ({p.weightGrams}g)</option>)}
-            </select>}
+            <div className="flex justify-between items-center mb-4 text-xs font-bold uppercase text-slate-400 tracking-widest">
+                <span>Use Plate Weight?</span>
+                <input type="checkbox" checked={usePlate} onChange={e => setUsePlate(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
+            </div>
+            {usePlate && (
+                <select className="w-full bg-white p-3 rounded-lg border mb-3 text-sm" value={selectedPlateId} onChange={e => setSelectedPlateId(e.target.value)}>
+                    <option value="">Select Plate...</option>
+                    {physicalPlates.map(p => <option key={p.id} value={p.id}>{p.name} ({p.weightGrams}g)</option>)}
+                </select>
+            )}
             <input className="w-full bg-white p-4 rounded-xl border font-bold" placeholder="Scale Weight" type="number" value={weightInput} onChange={e => setWeightInput(e.target.value)} />
           </div>
           <button onClick={handleSave} className="w-full bg-emerald-600 text-white font-bold py-5 rounded-2xl shadow-lg">Save {netWeight > 0 ? `${Math.round(netWeight)}g` : ''}</button>
-        </div>
-      </div>
-    );
-  };
-
-  const TrendsView = () => {
-    const sevenDayData = useMemo(() => {
-      const result = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const ds = d.toISOString().split('T')[0];
-        const dayCals = logs.filter(l => l.date === ds).reduce((t, l) => t + getLogStats(l), 0);
-        result.push({ label: d.toLocaleDateString(undefined, { weekday: 'short' }), c: dayCals });
-      }
-      return result;
-    }, [logs, foods]);
-
-    const maxCals = Math.max(...sevenDayData.map(d => d.c), 1);
-
-    return (
-      <div className="p-6 h-full overflow-y-auto pb-32 bg-slate-50 animate-in fade-in duration-500">
-        <h2 className="text-2xl font-black mb-6 text-slate-800">Performance Trends</h2>
-        
-        {/* Weekly Chart */}
-        <div className="bg-white p-6 rounded-3xl border mb-6 shadow-sm">
-          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-6">7-Day Consistency</h3>
-          <div className="flex items-end justify-between h-32 gap-3">
-            {sevenDayData.map((d, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full bg-emerald-500 rounded-t-xl transition-all duration-500" style={{ height: `${(d.c / (maxCals || 1)) * 100}%`, minHeight: '4px' }} />
-                <span className="text-[10px] font-bold text-slate-300 uppercase">{d.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Calorie Efficiency Section */}
-        <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 ml-2">Calorie Efficiency</h3>
-        <div className="space-y-3 mb-6">
-          {efficiencyMetrics.best && (
-            <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-3xl flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-emerald-500 p-2 rounded-xl text-white"><TrendingDown size={20} /></div>
-                <div>
-                  <span className="text-[10px] font-black text-emerald-600 uppercase">Best (Low Density)</span>
-                  <div className="font-black text-slate-800">{efficiencyMetrics.best.name}</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-lg font-black text-emerald-600">{efficiencyMetrics.best.caloriesPer100g}</div>
-                <div className="text-[10px] font-bold text-slate-400">kcal/100g</div>
-              </div>
-            </div>
-          )}
-          {efficiencyMetrics.worst && (
-            <div className="bg-red-50 border border-red-100 p-5 rounded-3xl flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-red-500 p-2 rounded-xl text-white"><TrendingUp size={20} /></div>
-                <div>
-                  <span className="text-[10px] font-black text-red-600 uppercase">Worst (High Density)</span>
-                  <div className="font-black text-slate-800">{efficiencyMetrics.worst.name}</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-lg font-black text-red-600">{efficiencyMetrics.worst.caloriesPer100g}</div>
-                <div className="text-[10px] font-bold text-slate-400">kcal/100g</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div onClick={() => setShowTargetModal(true)} className="bg-white p-6 rounded-3xl border shadow-sm flex justify-between items-center active:scale-95 transition-transform cursor-pointer">
-           <div className="flex items-center gap-3"><Target className="text-emerald-600"/><span className="font-bold text-slate-700">Daily Target</span></div>
-           <span className="font-black text-emerald-600 text-lg">{dailyGoal} kcal</span>
         </div>
       </div>
     );
@@ -237,7 +214,7 @@ export default function App() {
           {dailyLogs.length === 0 ? <div className="text-center py-20 text-slate-300 italic text-sm">No entries logged.</div> : (
             <div className="space-y-3">
               {dailyLogs.map(log => (
-                <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 border rounded-2xl">
+                <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 border rounded-2xl shadow-sm">
                   <div className="min-w-0">
                     <span className="font-bold text-slate-800 block truncate">{log.type === 'food' ? (foods.find(f => f.id === log.itemId)?.name) : 'Combo Meal'}</span>
                     <span className="text-[10px] text-slate-400 font-bold uppercase">{Math.round(log.amountGrams)}g</span>
@@ -259,51 +236,107 @@ export default function App() {
   return (
     <div className="fixed inset-0 bg-slate-900 flex justify-center overflow-hidden overscroll-none select-none">
       <div className="w-full h-full max-w-[450px] bg-white flex flex-col relative overflow-hidden">
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden bg-white">
           {isLoading && <div className="absolute inset-0 bg-white/90 z-50 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-600" size={40} /></div>}
-          {activeTab === 'log' && <HomeView />}
-          {activeTab === 'foods' && (
-            <div className="p-6 h-full overflow-y-auto pb-32">
-                <h2 className="text-2xl font-black mb-6 text-slate-800">Registry</h2>
-                <button onClick={() => setShowAddFood(true)} className="w-full border-2 border-dashed border-slate-200 p-4 rounded-2xl text-slate-400 font-bold mb-4">+ New Food</button>
-                {foods.map(f => (
-                    <div key={f.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center mb-2 shadow-sm">
-                        <div><span className="font-bold block text-slate-700">{f.name}</span><span className="text-[10px] text-slate-400 font-bold uppercase">{f.caloriesPer100g} kcal/100g</span></div>
-                        <div className="flex gap-4">
-                          <button onClick={() => setEditingFood(f)} className="text-slate-300"><Edit2 size={18}/></button>
-                          <button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/foods`, f.id)); }} className="text-slate-200"><Trash2 size={18}/></button>
+          <div className="h-full w-full">
+            {activeTab === 'log' && <HomeView />}
+            {activeTab === 'foods' && (
+                <div className="p-6 h-full overflow-y-auto pb-32">
+                    <h2 className="text-2xl font-black mb-6 text-slate-800">Registry</h2>
+                    <button onClick={() => setShowAddFood(true)} className="w-full border-2 border-dashed border-slate-200 p-4 rounded-2xl text-slate-400 font-bold mb-4">+ New Food</button>
+                    {foods.map(f => (
+                        <div key={f.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center mb-2 shadow-sm">
+                            <div><span className="font-bold block text-slate-700">{f.name}</span><span className="text-[10px] text-slate-400 font-bold uppercase">{f.caloriesPer100g} kcal/100g</span></div>
+                            <div className="flex gap-4">
+                              <button onClick={() => setEditingFood(f)} className="text-slate-300"><Edit2 size={18}/></button>
+                              <button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/foods`, f.id)); }} className="text-slate-200"><Trash2 size={18}/></button>
+                            </div>
                         </div>
+                    ))}
+                </div>
+            )}
+            {activeTab === 'trends' && (
+               <div className="p-6 h-full overflow-y-auto pb-32 bg-slate-50">
+                  <h2 className="text-2xl font-black mb-6 text-slate-800">Trends</h2>
+                  <div className="bg-white p-6 rounded-3xl border mb-6 shadow-sm">
+                    <div className="flex items-end justify-between h-32 gap-3">
+                      {[...Array(7)].map((_, i) => {
+                        const d = new Date(); d.setDate(d.getDate() - (6-i));
+                        const ds = d.toISOString().split('T')[0];
+                        const dayCals = logs.filter(l => l.date === ds).reduce((t, l) => t + getLogStats(l), 0);
+                        const h = Math.min((dayCals / dailyGoal) * 100, 100);
+                        return (
+                          <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                            <div className="w-full bg-emerald-500 rounded-t-xl transition-all duration-500" style={{ height: `${h}%`, minHeight: '4px' }} />
+                            <span className="text-[10px] font-bold text-slate-300 uppercase">{d.toLocaleDateString(undefined, {weekday: 'short'})}</span>
+                          </div>
+                        )
+                      })}
                     </div>
-                ))}
-            </div>
-          )}
-          {activeTab === 'trends' && <TrendsView />}
-          {activeTab === 'plates' && (
-            <div className="p-6 h-full overflow-y-auto pb-32">
-                <h2 className="text-2xl font-black mb-6 text-slate-800">Plates</h2>
-                <button onClick={() => setShowAddPlate(true)} className="w-full border-2 border-dashed border-slate-200 p-4 rounded-2xl text-slate-400 font-bold mb-4">+ Register Plate</button>
-                {physicalPlates.map(p => (
-                    <div key={p.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center mb-2 shadow-sm">
-                        <span className="font-bold text-slate-700">{p.name}</span>
-                        <div className="flex items-center gap-4"><span className="font-black text-emerald-600">{p.weightGrams}g</span><button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/plates`, p.id)); }} className="text-slate-200"><Trash2 size={18}/></button></div>
-                    </div>
-                ))}
-            </div>
-          )}
+                  </div>
+
+                  <div className="space-y-3 mb-6">
+                    {efficiencyMetrics.best && (
+                      <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-3xl flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-emerald-500 p-2 rounded-xl text-white"><TrendingDown size={20} /></div>
+                          <div><span className="text-[10px] font-black text-emerald-600 uppercase">Best Density</span><div className="font-black text-slate-800">{efficiencyMetrics.best.name}</div></div>
+                        </div>
+                        <div className="text-right"><div className="text-lg font-black text-emerald-600">{efficiencyMetrics.best.caloriesPer100g}</div><div className="text-[10px] font-bold text-slate-400">kcal/100g</div></div>
+                      </div>
+                    )}
+                    {efficiencyMetrics.worst && (
+                      <div className="bg-red-50 border border-red-100 p-5 rounded-3xl flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-red-500 p-2 rounded-xl text-white"><TrendingUp size={20} /></div>
+                          <div><span className="text-[10px] font-black text-red-600 uppercase">Worst Density</span><div className="font-black text-slate-800">{efficiencyMetrics.worst.name}</div></div>
+                        </div>
+                        <div className="text-right"><div className="text-lg font-black text-red-600">{efficiencyMetrics.worst.caloriesPer100g}</div><div className="text-[10px] font-bold text-slate-400">kcal/100g</div></div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div onClick={() => setShowTargetModal(true)} className="bg-white p-6 rounded-3xl border shadow-sm flex justify-between items-center active:scale-95 transition-transform cursor-pointer">
+                    <div className="flex items-center gap-3"><Target className="text-emerald-600"/><span className="font-bold text-slate-700">Daily Goal</span></div>
+                    <span className="font-black text-emerald-600 text-lg">{dailyGoal} kcal</span>
+                  </div>
+               </div>
+            )}
+            {activeTab === 'plates' && (
+                <div className="p-6 h-full overflow-y-auto pb-32">
+                    <h2 className="text-2xl font-black mb-6 text-slate-800">Plates</h2>
+                    <button onClick={() => setShowAddPlate(true)} className="w-full border-2 border-dashed border-slate-200 p-4 rounded-2xl text-slate-400 font-bold mb-4">+ Register Plate</button>
+                    {physicalPlates.map(p => (
+                        <div key={p.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center mb-2 shadow-sm">
+                            <span className="font-bold text-slate-700">{p.name}</span>
+                            <div className="flex items-center gap-4"><span className="font-black text-emerald-600">{p.weightGrams}g</span><button onClick={async () => { await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/plates`, p.id)); }} className="text-slate-200"><Trash2 size={18}/></button></div>
+                        </div>
+                    ))}
+                </div>
+            )}
+          </div>
         </div>
 
-        <div className="h-24 bg-white border-t flex items-center justify-around shrink-0 z-40 pb-6 px-4">
-          <button onClick={() => setActiveTab('log')} className={`flex flex-col items-center w-1/4 ${activeTab === 'log' ? 'text-emerald-600' : 'text-slate-300'}`}><Home size={22} /><span className="text-[10px] font-black mt-1 uppercase">Log</span></button>
-          <button onClick={() => setActiveTab('foods')} className={`flex flex-col items-center w-1/4 ${activeTab === 'foods' ? 'text-emerald-600' : 'text-slate-300'}`}><Utensils size={22} /><span className="text-[10px] font-black mt-1 uppercase">Registry</span></button>
-          <button onClick={() => setActiveTab('trends')} className={`flex flex-col items-center w-1/4 ${activeTab === 'trends' ? 'text-emerald-600' : 'text-slate-300'}`}><BarChart3 size={22} /><span className="text-[10px] font-black mt-1 uppercase">Trends</span></button>
-          <button onClick={() => setActiveTab('plates')} className={`flex flex-col items-center w-1/4 ${activeTab === 'plates' ? 'text-emerald-600' : 'text-slate-300'}`}><Disc size={22} /><span className="text-[10px] font-black mt-1 uppercase">Plates</span></button>
+        <div className="h-24 bg-white border-t border-slate-100 flex items-center justify-around shrink-0 z-40 pb-6 px-4">
+          <button onClick={() => setActiveTab('log')} className={`flex flex-col items-center w-1/4 ${activeTab === 'log' ? 'text-emerald-600' : 'text-slate-300'}`}>
+            <Home size={22} /><span className="text-[10px] font-black mt-1 uppercase">Log</span>
+          </button>
+          <button onClick={() => setActiveTab('foods')} className={`flex flex-col items-center w-1/4 ${activeTab === 'foods' ? 'text-emerald-600' : 'text-slate-300'}`}>
+            <Utensils size={22} /><span className="text-[10px] font-black mt-1 uppercase">Foods</span>
+          </button>
+          <button onClick={() => setActiveTab('trends')} className={`flex flex-col items-center w-1/4 ${activeTab === 'trends' ? 'text-emerald-600' : 'text-slate-300'}`}>
+            <BarChart3 size={22} /><span className="text-[10px] font-black mt-1 uppercase">Trends</span>
+          </button>
+          <button onClick={() => setActiveTab('plates')} className={`flex flex-col items-center w-1/4 ${activeTab === 'plates' ? 'text-emerald-600' : 'text-slate-300'}`}>
+            <Disc size={22} /><span className="text-[10px] font-black mt-1 uppercase">Plates</span>
+          </button>
         </div>
 
         {showAddLog && <AddLogModal />}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
             <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl">
-              <h2 className="text-xl font-bold mb-6">Set Daily Target</h2>
+              <h2 className="text-xl font-bold mb-6">Set Daily Goal</h2>
               <input id="tg-v" className="w-full bg-slate-50 p-4 rounded-xl border mb-8 outline-none font-black text-2xl text-center" type="number" defaultValue={dailyGoal} />
               <div className="flex gap-3">
                 <button onClick={() => setShowTargetModal(false)} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400">Cancel</button>
@@ -337,17 +370,17 @@ export default function App() {
         )}
         {showAddPlate && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
-            <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95">
-                <h2 className="text-xl font-bold mb-6">Register Plate</h2>
-                <input id="p-n" className="w-full bg-slate-50 p-4 rounded-xl border mb-3 outline-none" placeholder="Plate Name" />
-                <input id="p-w" className="w-full bg-slate-50 p-4 rounded-xl border mb-8 outline-none" placeholder="Empty Weight (g)" type="number" />
-                <div className="flex gap-3">
-                  <button onClick={() => setShowAddPlate(false)} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400 text-sm">Cancel</button>
-                  <button onClick={async () => {
-                    const n = document.getElementById('p-n').value; const w = document.getElementById('p-w').value;
-                    if (n && w) { const id = generateId(); await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/plates`, id), { id, name: n, weightGrams: parseFloat(w) }); setShowAddPlate(false); }
-                  }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-xl text-sm">Save</button>
-                </div>
+            <div className="bg-white w-full rounded-[2.5rem] p-8">
+              <h2 className="text-xl font-bold mb-6">New Plate</h2>
+              <input id="p-n" className="w-full bg-slate-50 p-4 rounded-xl border mb-3 outline-none" placeholder="Plate Name" />
+              <input id="p-w" className="w-full bg-slate-50 p-4 rounded-xl border mb-8 outline-none" placeholder="Weight (g)" type="number" />
+              <div className="flex gap-3">
+                <button onClick={() => setShowAddPlate(false)} className="flex-1 bg-slate-100 p-4 rounded-xl font-bold text-slate-400 text-sm">Cancel</button>
+                <button onClick={async () => {
+                  const n = document.getElementById('p-n').value; const w = document.getElementById('p-w').value;
+                  if (n && w) { const id = generateId(); await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/plates`, id), { id, name: n, weightGrams: parseFloat(w) }); setShowAddPlate(false); }
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-xl text-sm">Save</button>
+              </div>
             </div>
           </div>
         )}
