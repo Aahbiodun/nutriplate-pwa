@@ -23,7 +23,14 @@ import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'fi
 
 // --- Firebase Setup ---
 const customFirebaseConfig = {
-  // PASTE YOUR FIREBASE KEYS HERE FROM THE FIREBASE CONSOLE
+ apiKey: "AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY",
+  authDomain: "food-log-abc32.firebaseapp.com",
+  databaseURL: "https://food-log-abc32-default-rtdb.firebaseio.com",
+  projectId: "food-log-abc32",
+  storageBucket: "food-log-abc32.firebasestorage.app",
+  messagingSenderId: "575042025031",
+  appId: "1:575042025031:web:f11b840bb418c3218da362",
+  measurementId: "G-BEDGMLCDT8"
 };
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
