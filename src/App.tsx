@@ -41,6 +41,7 @@ if (Object.keys(firebaseConfig).length > 0) {
   }
 }
 
+// 🔑 THE FIX: Pointing the app back to your original database folder
 const appId = 'nutriplate_aahbiodun_stable'; 
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
   const [showAddFood, setShowAddFood] = useState(false);
   const [showAddLog, setShowAddLog] = useState(false);
 
+  // --- Auth Session Recovery ---
   useEffect(() => {
     if (!auth) return;
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
@@ -70,8 +72,11 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
+  // --- Data Sync (Fetching from your original folder) ---
   useEffect(() => {
     if (!user || !db) return;
+    
+    // This path now uses 'nutriplate_aahbiodun_stable'
     const userPath = `artifacts/${appId}/users/${user.uid}`;
     
     const unsubFoods = onSnapshot(collection(db, `${userPath}/foods`), (s) => {
@@ -86,6 +91,7 @@ export default function App() {
     return () => { unsubFoods(); unsubLogs(); };
   }, [user]);
 
+  // --- Calculations ---
   const getNutrients = (foodId, grams) => {
     const f = foods.find(x => x.id === foodId);
     if (!f) return { c: 0, p: 0 };
@@ -102,7 +108,7 @@ export default function App() {
     return { c: acc.c + n.c, p: acc.p + n.p };
   }, { c: 0, p: 0 }), [dayLogs, foods]);
 
-  // Safety check: If Firebase isn't configured, show alert instead of blank screen
+  // Safety check
   if (Object.keys(firebaseConfig).length === 0) {
     return (
       <div className="h-screen flex items-center justify-center p-10 text-center bg-slate-900 text-white">
@@ -115,6 +121,7 @@ export default function App() {
     );
   }
 
+  // --- Main Layout ---
   return (
     <div className="fixed inset-0 bg-slate-900 flex justify-center overflow-hidden overscroll-none select-none">
       <div className="w-full h-full max-w-[450px] bg-white flex flex-col relative overflow-hidden">
@@ -144,7 +151,10 @@ export default function App() {
           
           {activeTab === 'log' && (
             <div className="p-6 space-y-3 pb-32">
-                <h3 className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-2">Today's Intake</h3>
+                <h3 className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-2">History</h3>
+                {dayLogs.length === 0 && !isLoading && (
+                   <div className="text-center p-6 text-slate-400 text-sm">No entries for this date.</div>
+                )}
                 {dayLogs.map(l => {
                     const food = foods.find(f => f.id === l.foodId);
                     const n = getNutrients(l.foodId, l.amountGrams);
