@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, Utensils, Plus, ChevronLeft, ChevronRight, 
-  Trash2, Loader2, BarChart3, AlertTriangle 
+  Trash2, Loader2, BarChart3, AlertTriangle, X 
 } from 'lucide-react';
 
 import { initializeApp, getApps } from 'firebase/app';
@@ -53,6 +53,11 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const [showAddFood, setShowAddFood] = useState(false);
   const [showAddLog, setShowAddLog] = useState(false);
+
+  // Combo Feature State
+  const [isCombo, setIsCombo] = useState(false);
+  const [comboWeight, setComboWeight] = useState('');
+  const [comboItems, setComboItems] = useState([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
 
   useEffect(() => {
     if (!auth) return;
@@ -250,30 +255,134 @@ export default function App() {
           </div>
         )}
 
+        {/* RESTORED AND UPDATED LOG MODAL */}
         {showAddLog && (
           <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 max-h-[90vh] overflow-y-auto">
               <h2 className="text-2xl font-black mb-6">Log weight</h2>
-              <select className="w-full bg-slate-100 rounded-2xl p-4 mb-3 outline-none" id="lf">
-                <option value="">Select Food...</option>
-                {foods.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-              <input placeholder="Grams" type="number" className="w-full bg-slate-100 rounded-2xl p-4 mb-6 outline-none" id="lg" />
+              
+              {/* Toggle Menu */}
+              <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
+                <button 
+                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${!isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  onClick={() => setIsCombo(false)}
+                >Single</button>
+                <button 
+                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  onClick={() => setIsCombo(true)}
+                >Combo (%)</button>
+              </div>
+
+              {!isCombo ? (
+                /* SINGLE LOG MODE */
+                <>
+                  <select className="w-full bg-slate-100 rounded-2xl p-4 mb-3 outline-none" id="lf">
+                    <option value="">Select Food...</option>
+                    {[...foods].sort((a, b) => a.name.localeCompare(b.name)).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                  <input placeholder="Grams" type="number" className="w-full bg-slate-100 rounded-2xl p-4 mb-6 outline-none" id="lg" />
+                </>
+              ) : (
+                /* COMBO PERCENTAGE MODE */
+                <>
+                  <input 
+                    placeholder="Total Combo Weight (Grams)" 
+                    type="number" 
+                    className="w-full bg-slate-100 rounded-2xl p-4 mb-4 outline-none font-bold text-emerald-600" 
+                    value={comboWeight}
+                    onChange={e => setComboWeight(e.target.value)} 
+                  />
+                  <div className="space-y-3 mb-4">
+                    {comboItems.map((item, index) => (
+                      <div key={index} className="flex gap-2 items-center">
+                        <select 
+                          className="flex-1 bg-slate-100 rounded-2xl p-3 outline-none text-sm"
+                          value={item.foodId}
+                          onChange={e => {
+                            const newItems = [...comboItems];
+                            newItems[index].foodId = e.target.value;
+                            setComboItems(newItems);
+                          }}
+                        >
+                          <option value="">Food {index + 1}...</option>
+                          {[...foods].sort((a, b) => a.name.localeCompare(b.name)).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                        <input 
+                          placeholder="%" 
+                          type="number" 
+                          className="w-20 bg-slate-100 rounded-2xl p-3 outline-none text-center text-sm"
+                          value={item.percentage}
+                          onChange={e => {
+                            const newItems = [...comboItems];
+                            newItems[index].percentage = e.target.value;
+                            setComboItems(newItems);
+                          }}
+                        />
+                        {index > 1 && (
+                          <button onClick={() => {
+                            const newItems = comboItems.filter((_, i) => i !== index);
+                            setComboItems(newItems);
+                          }} className="text-slate-400 p-2 hover:text-red-500 transition-colors"><X size={16}/></button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={() => setComboItems([...comboItems, { foodId: '', percentage: '' }])}
+                    className="w-full text-xs font-bold text-emerald-600 mb-6 py-3 border-2 border-dashed border-emerald-100 rounded-xl hover:bg-emerald-50 transition-colors"
+                  >
+                    + Add another food to combo
+                  </button>
+                </>
+              )}
+
               <div className="flex gap-3">
-                <button onClick={() => setShowAddLog(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
+                <button onClick={() => { setShowAddLog(false); setIsCombo(false); }} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
                 <button onClick={async () => {
-                  const fId = document.getElementById('lf').value;
-                  const gms = document.getElementById('lg').value;
-                  if (!fId || !gms || !user) return;
-                  const id = Math.random().toString(36).substr(2, 9);
+                  if (!user) return;
                   
-                  // Force save to permanent ID
-                  await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/logs`, id), {
-                    id, foodId: fId, 
-                    amountGrams: parseFloat(gms),
-                    date: currentDate
-                  });
+                  if (!isCombo) {
+                    // Save Single Log
+                    const fId = document.getElementById('lf').value;
+                    const gms = document.getElementById('lg').value;
+                    if (!fId || !gms) return;
+                    const id = Math.random().toString(36).substr(2, 9);
+                    await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/logs`, id), {
+                      id, foodId: fId, amountGrams: parseFloat(gms), date: currentDate
+                    });
+                  } else {
+                    // Save Combo Log
+                    const totalW = parseFloat(comboWeight);
+                    if (!totalW || totalW <= 0) {
+                        alert("Please enter a valid total weight for the combo.");
+                        return;
+                    }
+                    const totalPct = comboItems.reduce((sum, item) => sum + (parseFloat(item.percentage) || 0), 0);
+                    if (Math.abs(totalPct - 100) > 0.1) {
+                        alert(`Your percentages must equal 100%. They currently equal ${totalPct}%.`);
+                        return;
+                    }
+                    
+                    // Log each item based on its percentage
+                    for (const item of comboItems) {
+                        if (item.foodId && parseFloat(item.percentage) > 0) {
+                            const id = Math.random().toString(36).substr(2, 9);
+                            const calculatedGrams = (parseFloat(item.percentage) / 100) * totalW;
+                            await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/logs`, id), {
+                                id, 
+                                foodId: item.foodId, 
+                                amountGrams: parseFloat(calculatedGrams.toFixed(1)), 
+                                date: currentDate
+                            });
+                        }
+                    }
+                    // Reset combo state for next time
+                    setComboWeight('');
+                    setComboItems([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
+                  }
+                  
                   setShowAddLog(false);
+                  setIsCombo(false);
                 }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl">Log</button>
               </div>
             </div>
