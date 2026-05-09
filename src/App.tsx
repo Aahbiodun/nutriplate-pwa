@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, Utensils, Plus, ChevronLeft, ChevronRight, 
-  Trash2, Loader2, BarChart3, AlertTriangle, X 
+  Trash2, Loader2, BarChart3, AlertTriangle, X, Edit2 
 } from 'lucide-react';
 
 import { initializeApp, getApps } from 'firebase/app';
@@ -42,7 +42,7 @@ if (Object.keys(firebaseConfig).length > 0) {
 
 // --- THE PERMANENT DATA LINK ---
 const appId = 'nutriplate_aahbiodun_stable'; 
-const MY_PERMANENT_UID = '5D3QzaJfLERycrkJkcOXs9LfFXU2'; // Your recovered profile
+const MY_PERMANENT_UID = '5D3QzaJfLERycrkJkcOXs9LfFXU2'; 
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('log'); 
@@ -52,18 +52,19 @@ export default function App() {
   
   // Data States
   const [foods, setFoods] = useState([]);
-  const [plates, setPlates] = useState([]); // NEW: Physical Plate Registry
+  const [plates, setPlates] = useState([]); 
   const [logs, setLogs] = useState([]);
   
   // Modal States
   const [showAddFood, setShowAddFood] = useState(false);
-  const [showAddPlate, setShowAddPlate] = useState(false); // NEW: Plate Modal
+  const [editingFood, setEditingFood] = useState(null); // NEW: State for editing food
+  const [showAddPlate, setShowAddPlate] = useState(false); 
   const [showAddLog, setShowAddLog] = useState(false);
 
   // Logging States
   const [isCombo, setIsCombo] = useState(false);
-  const [scaleWeight, setScaleWeight] = useState(''); // What the physical scale reads
-  const [selectedPlate, setSelectedPlate] = useState(''); // Which plate is on the scale
+  const [scaleWeight, setScaleWeight] = useState(''); 
+  const [selectedPlate, setSelectedPlate] = useState(''); 
   const [singleFoodId, setSingleFoodId] = useState('');
   const [comboItems, setComboItems] = useState([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
 
@@ -84,7 +85,6 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
-  // --- Forced Data Sync to your Permanent ID ---
   useEffect(() => {
     if (!user || !db) return;
     
@@ -139,7 +139,7 @@ export default function App() {
       <div className="w-full h-full max-w-[450px] bg-white flex flex-col relative overflow-hidden">
         
         {/* Header Dashboard */}
-        <div className="bg-emerald-600 text-white p-6 pt-10 rounded-b-[2.5rem] shrink-0 shadow-lg">
+        <div className="bg-emerald-600 text-white p-6 pt-10 rounded-b-[2.5rem] shrink-0 shadow-lg z-10">
           <div className="flex justify-between items-center mb-6">
              <button onClick={() => {
                const d = new Date(currentDate); d.setDate(d.getDate()-1); setCurrentDate(d.toISOString().split('T')[0]);
@@ -158,7 +158,7 @@ export default function App() {
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-slate-50">
           {isLoading && <div className="flex justify-center p-10"><Loader2 className="animate-spin text-emerald-600"/></div>}
           
           {activeTab === 'log' && (
@@ -171,7 +171,7 @@ export default function App() {
                     const food = foods.find(f => f.id === l.foodId);
                     const n = getNutrients(l.foodId, l.amountGrams);
                     return (
-                      <div key={l.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between border items-center">
+                      <div key={l.id} className="p-4 bg-white rounded-2xl flex justify-between border border-slate-100 items-center shadow-sm">
                           <div>
                             <span className="font-bold text-slate-700 block">{food?.name || 'Unknown Food'}</span>
                             <span className="text-[10px] text-slate-400 font-bold">{l.amountGrams}g</span>
@@ -183,7 +183,7 @@ export default function App() {
                              </div>
                              <button onClick={async () => {
                                if (user) await deleteDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/logs`, l.id));
-                             }} className="text-slate-300"><Trash2 size={16}/></button>
+                             }} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
                           </div>
                       </div>
                     );
@@ -197,18 +197,30 @@ export default function App() {
                 
                 {/* Add Buttons */}
                 <div className="flex gap-2 mb-6">
-                  <button onClick={() => setShowAddFood(true)} className="flex-1 border-2 border-dashed border-slate-200 p-3 rounded-xl text-slate-400 font-bold text-sm hover:bg-slate-50">+ Add Food</button>
-                  <button onClick={() => setShowAddPlate(true)} className="flex-1 border-2 border-dashed border-slate-200 p-3 rounded-xl text-slate-400 font-bold text-sm hover:bg-slate-50">+ Add Plate</button>
+                  <button onClick={() => setShowAddFood(true)} className="flex-1 border-2 border-dashed border-slate-200 p-3 rounded-xl text-slate-400 font-bold text-sm hover:bg-slate-100 transition-colors">+ Add Food</button>
+                  <button onClick={() => setShowAddPlate(true)} className="flex-1 border-2 border-dashed border-slate-200 p-3 rounded-xl text-slate-400 font-bold text-sm hover:bg-slate-100 transition-colors">+ Add Plate</button>
                 </div>
 
                 <h3 className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-2 mt-4">My Foods</h3>
                 {foods.length === 0 && <div className="text-xs text-slate-400">No foods registered.</div>}
                 {[...foods].sort((a, b) => a.name.localeCompare(b.name)).map(f => (
-                    <div key={f.id} className="p-4 bg-white border rounded-2xl flex justify-between items-center shadow-sm">
-                        <span className="font-bold text-slate-700">{f.name}</span>
-                        <div className="text-right">
-                          <div className="text-xs font-bold text-slate-500">{f.caloriesPer100g} kcal</div>
-                          <div className="text-[10px] font-bold text-emerald-600 uppercase">{f.proteinPer100g}g Protein</div>
+                    <div key={f.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex justify-between items-center shadow-sm group">
+                        <div>
+                          <span className="font-bold text-slate-700 block">{f.name}</span>
+                          <div className="flex gap-3 mt-1">
+                            <span className="text-[10px] font-bold text-slate-400">{f.caloriesPer100g} kcal</span>
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase">{f.proteinPer100g}g P</span>
+                          </div>
+                        </div>
+                        
+                        {/* EDIT & DELETE CONTROLS */}
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => setEditingFood(f)} className="text-slate-300 hover:text-emerald-600 transition-colors p-1"><Edit2 size={16}/></button>
+                          <button onClick={async () => {
+                            if (window.confirm(`Delete ${f.name} from your registry?`)) {
+                               await deleteDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/foods`, f.id));
+                            }
+                          }} className="text-slate-300 hover:text-red-500 transition-colors p-1"><Trash2 size={16}/></button>
                         </div>
                     </div>
                 ))}
@@ -216,9 +228,16 @@ export default function App() {
                 <h3 className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-2 mt-8">My Plates</h3>
                 {plates.length === 0 && <div className="text-xs text-slate-400">No plates registered.</div>}
                 {plates.map(p => (
-                    <div key={p.id} className="p-4 bg-slate-50 border rounded-2xl flex justify-between items-center shadow-sm">
+                    <div key={p.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex justify-between items-center shadow-sm">
                         <span className="font-bold text-slate-700">{p.name}</span>
-                        <div className="text-xs font-black text-emerald-600 bg-emerald-100 px-3 py-1 rounded-lg">{p.weight}g</div>
+                        <div className="flex items-center gap-4">
+                            <div className="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">{p.weight}g</div>
+                            <button onClick={async () => {
+                                if (window.confirm(`Delete plate ${p.name}?`)) {
+                                   await deleteDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/plates`, p.id));
+                                }
+                            }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                        </div>
                     </div>
                 ))}
              </div>
@@ -236,7 +255,7 @@ export default function App() {
                      return { c: acc.c + n.c, p: acc.p + n.p };
                   }, { c: 0, p: 0 });
                   return (
-                     <div key={i} className="bg-white p-5 rounded-3xl border flex justify-between shadow-sm">
+                     <div key={i} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between shadow-sm">
                         <span className="font-black text-slate-800">{d.toLocaleDateString(undefined, {weekday: 'short'})}</span>
                         <div className="text-right font-bold">
                            <div className="text-emerald-600">{Math.round(t.c)} kcal</div>
@@ -250,7 +269,7 @@ export default function App() {
         </div>
 
         {/* Bottom Nav */}
-        <div className="h-24 bg-white border-t flex items-center justify-around shrink-0 pb-6 px-4">
+        <div className="h-24 bg-white border-t flex items-center justify-around shrink-0 pb-6 px-4 z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
           <button onClick={() => setActiveTab('log')} className={activeTab === 'log' ? 'text-emerald-600' : 'text-slate-300'}><Home/></button>
           <button onClick={() => setActiveTab('foods')} className={activeTab === 'foods' ? 'text-emerald-600' : 'text-slate-300'}><Utensils/></button>
           <button onClick={() => setActiveTab('trends')} className={activeTab === 'trends' ? 'text-emerald-600' : 'text-slate-300'}><BarChart3/></button>
@@ -261,13 +280,13 @@ export default function App() {
         {/* Modal: Add Food */}
         {showAddFood && (
           <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
               <h2 className="text-2xl font-black mb-6">Register Food</h2>
-              <input placeholder="Name" className="w-full bg-slate-100 rounded-2xl p-4 mb-3 outline-none" id="fn" />
-              <input placeholder="Cals / 100g" type="number" className="w-full bg-slate-100 rounded-2xl p-4 mb-3 outline-none" id="fc" />
-              <input placeholder="Protein / 100g" type="number" className="w-full bg-slate-100 rounded-2xl p-4 mb-6 outline-none" id="fp" />
+              <input placeholder="Name" className="w-full bg-slate-50 rounded-2xl p-4 mb-3 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="fn" />
+              <input placeholder="Cals / 100g" type="number" className="w-full bg-slate-50 rounded-2xl p-4 mb-3 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="fc" />
+              <input placeholder="Protein / 100g" type="number" className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="fp" />
               <div className="flex gap-3">
-                <button onClick={() => setShowAddFood(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
+                <button onClick={() => setShowAddFood(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
                 <button onClick={async () => {
                   const name = document.getElementById('fn').value;
                   const cals = document.getElementById('fc').value;
@@ -278,7 +297,32 @@ export default function App() {
                     id, name, caloriesPer100g: parseFloat(cals), proteinPer100g: parseFloat(prot || 0)
                   });
                   setShowAddFood(false);
-                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl">Save</button>
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Save</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Edit Food */}
+        {editingFood && (
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
+              <h2 className="text-2xl font-black mb-6">Edit Food</h2>
+              <input placeholder="Name" defaultValue={editingFood.name} className="w-full bg-slate-50 rounded-2xl p-4 mb-3 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="efn" />
+              <input placeholder="Cals / 100g" type="number" defaultValue={editingFood.caloriesPer100g} className="w-full bg-slate-50 rounded-2xl p-4 mb-3 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="efc" />
+              <input placeholder="Protein / 100g" type="number" defaultValue={editingFood.proteinPer100g} className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="efp" />
+              <div className="flex gap-3">
+                <button onClick={() => setEditingFood(null)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={async () => {
+                  const name = document.getElementById('efn').value;
+                  const cals = document.getElementById('efc').value;
+                  const prot = document.getElementById('efp').value;
+                  if (!name || !cals || !user) return;
+                  await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/foods`, editingFood.id), {
+                    id: editingFood.id, name, caloriesPer100g: parseFloat(cals), proteinPer100g: parseFloat(prot || 0)
+                  });
+                  setEditingFood(null);
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Update</button>
               </div>
             </div>
           </div>
@@ -287,13 +331,13 @@ export default function App() {
         {/* Modal: Add Plate */}
         {showAddPlate && (
           <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
               <h2 className="text-2xl font-black mb-2">Register Plate</h2>
-              <p className="text-xs text-slate-400 mb-6 font-bold">Log physical bowls/plates so the app can subtract their weight automatically.</p>
-              <input placeholder="Plate Name (e.g. Big White Bowl)" className="w-full bg-slate-100 rounded-2xl p-4 mb-3 outline-none" id="pn" />
-              <input placeholder="Empty Weight (Grams)" type="number" className="w-full bg-slate-100 rounded-2xl p-4 mb-6 outline-none" id="pw" />
+              <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed">Save physical bowls/plates so the app can automatically deduct their weight.</p>
+              <input placeholder="Plate Name (e.g. Big Bowl)" className="w-full bg-slate-50 rounded-2xl p-4 mb-3 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="pn" />
+              <input placeholder="Empty Weight (Grams)" type="number" className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors" id="pw" />
               <div className="flex gap-3">
-                <button onClick={() => setShowAddPlate(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
+                <button onClick={() => setShowAddPlate(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
                 <button onClick={async () => {
                   const name = document.getElementById('pn').value;
                   const wght = document.getElementById('pw').value;
@@ -303,69 +347,75 @@ export default function App() {
                     id, name, weight: parseFloat(wght)
                   });
                   setShowAddPlate(false);
-                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl">Save</button>
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Save</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal: Main Logging Form with Plate Math */}
+        {/* OPTIMIZED LOGGING MODAL */}
         {showAddLog && (
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-black mb-4">Log scale weight</h2>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 max-h-[95vh] overflow-y-auto shadow-2xl">
+              <h2 className="text-2xl font-black mb-5 text-center">Log Food</h2>
               
-              {/* Step 1: The Scale & Plate Logic */}
-              <div className="bg-slate-50 p-4 rounded-2xl mb-6 border border-slate-100">
-                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">1. What does the scale say?</label>
-                <input 
-                    placeholder="Total Weight (g)" 
-                    type="number" 
-                    className="w-full bg-white rounded-xl p-3 mt-2 mb-3 outline-none border font-bold text-emerald-600" 
-                    value={scaleWeight}
-                    onChange={e => setScaleWeight(e.target.value)} 
-                />
+              {/* Step 1: Sleek Scale Input Container */}
+              <div className="bg-slate-50 p-5 rounded-3xl mb-5 border border-slate-100">
+                <div className="mb-4">
+                  <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">1. Scale Weight (g)</label>
+                  <input 
+                      placeholder="0" 
+                      type="number" 
+                      className="w-full bg-white rounded-2xl p-4 outline-none border border-slate-200 font-black text-3xl text-emerald-600 transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-center shadow-sm" 
+                      value={scaleWeight}
+                      onChange={e => setScaleWeight(e.target.value)} 
+                  />
+                </div>
                 
-                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">2. Which plate is it on?</label>
-                <select 
-                    className="w-full bg-white rounded-xl p-3 mt-2 outline-none border text-sm"
-                    value={selectedPlate}
-                    onChange={e => setSelectedPlate(e.target.value)}
-                >
-                    <option value="">No Plate (Or scale was tared)</option>
-                    {plates.map(p => <option key={p.id} value={p.id}>{p.name} (-{p.weight}g)</option>)}
-                </select>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">2. Deduct Plate</label>
+                  <select 
+                      className="w-full bg-white rounded-2xl p-4 outline-none border border-slate-200 text-sm font-bold text-slate-700 transition-all focus:border-emerald-500 shadow-sm"
+                      value={selectedPlate}
+                      onChange={e => setSelectedPlate(e.target.value)}
+                  >
+                      <option value="">No Plate (0g deduction)</option>
+                      {plates.map(p => <option key={p.id} value={p.id}>{p.name} (-{p.weight}g)</option>)}
+                  </select>
+                </div>
               </div>
 
-              {/* Step 2: Single vs Combo Toggle */}
-              <div className="flex gap-2 mb-4 bg-slate-100 p-1 rounded-2xl">
+              {/* Step 2: Sleek Segmented Toggle */}
+              <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">3. Allocation</label>
+              <div className="flex p-1 bg-slate-100 rounded-2xl mb-5">
                 <button 
-                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${!isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  className={`flex-1 py-3 font-bold rounded-xl text-sm transition-all duration-300 ${!isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
                   onClick={() => setIsCombo(false)}
                 >Single Food</button>
                 <button 
-                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  className={`flex-1 py-3 font-bold rounded-xl text-sm transition-all duration-300 ${isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
                   onClick={() => setIsCombo(true)}
                 >Combo (%)</button>
               </div>
 
-              {/* Step 3: Food Selection */}
+              {/* Step 3: Minimal Food Selection */}
               {!isCombo ? (
-                <select 
-                    className="w-full bg-slate-100 rounded-2xl p-4 mb-6 outline-none"
-                    value={singleFoodId}
-                    onChange={e => setSingleFoodId(e.target.value)}
-                >
-                  <option value="">Select Food...</option>
-                  {[...foods].sort((a, b) => a.name.localeCompare(b.name)).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
+                <div className="mb-6">
+                  <select 
+                      className="w-full bg-slate-50 rounded-2xl p-4 outline-none border border-slate-100 font-bold text-slate-700 focus:border-emerald-500 transition-all shadow-sm"
+                      value={singleFoodId}
+                      onChange={e => setSingleFoodId(e.target.value)}
+                  >
+                    <option value="">Select Food...</option>
+                    {[...foods].sort((a, b) => a.name.localeCompare(b.name)).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </div>
               ) : (
-                <div className="space-y-3 mb-6">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">Assign Percentages</div>
+                <div className="space-y-3 mb-6 bg-slate-50 p-4 rounded-3xl border border-slate-100">
                   {comboItems.map((item, index) => (
                     <div key={index} className="flex gap-2 items-center">
                       <select 
-                        className="flex-1 bg-slate-100 rounded-2xl p-3 outline-none text-sm"
+                        className="flex-1 bg-white border border-slate-200 rounded-2xl p-3 outline-none text-sm font-bold text-slate-700 focus:border-emerald-500 shadow-sm"
                         value={item.foodId}
                         onChange={e => {
                           const newItems = [...comboItems];
@@ -379,7 +429,7 @@ export default function App() {
                       <input 
                         placeholder="%" 
                         type="number" 
-                        className="w-20 bg-slate-100 rounded-2xl p-3 outline-none text-center text-sm font-bold"
+                        className="w-20 bg-white border border-slate-200 rounded-2xl p-3 outline-none text-center text-sm font-black text-emerald-600 focus:border-emerald-500 shadow-sm"
                         value={item.percentage}
                         onChange={e => {
                           const newItems = [...comboItems];
@@ -391,13 +441,13 @@ export default function App() {
                         <button onClick={() => {
                           const newItems = comboItems.filter((_, i) => i !== index);
                           setComboItems(newItems);
-                        }} className="text-slate-400 p-2 hover:text-red-500 transition-colors"><X size={16}/></button>
+                        }} className="text-slate-300 p-2 hover:text-red-500 transition-colors"><X size={16}/></button>
                       )}
                     </div>
                   ))}
                   <button 
                     onClick={() => setComboItems([...comboItems, { foodId: '', percentage: '' }])}
-                    className="w-full text-xs font-bold text-emerald-600 py-3 border-2 border-dashed border-emerald-100 rounded-xl hover:bg-emerald-50 transition-colors"
+                    className="w-full text-xs font-bold text-emerald-600 py-3 mt-2 border-2 border-dashed border-emerald-100 rounded-xl hover:bg-emerald-50 transition-colors"
                   >
                     + Add food to combo
                   </button>
@@ -410,7 +460,7 @@ export default function App() {
                   setShowAddLog(false); 
                   setScaleWeight('');
                   setSelectedPlate('');
-                }} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
+                }} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
                 
                 <button onClick={async () => {
                   if (!user) return;
@@ -434,14 +484,12 @@ export default function App() {
 
                   // 2. Distribute the Weight
                   if (!isCombo) {
-                    // Single Log
                     if (!singleFoodId) { alert("Please select a food."); return; }
                     const id = Math.random().toString(36).substr(2, 9);
                     await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/logs`, id), {
                       id, foodId: singleFoodId, amountGrams: parseFloat(actualNetWeight.toFixed(1)), date: currentDate
                     });
                   } else {
-                    // Combo Log
                     const totalPct = comboItems.reduce((sum, item) => sum + (parseFloat(item.percentage) || 0), 0);
                     if (Math.abs(totalPct - 100) > 0.1) {
                         alert(`Percentages must equal 100%. They currently equal ${totalPct}%.`); return;
@@ -458,20 +506,20 @@ export default function App() {
                     }
                   }
                   
-                  // Reset & Close
                   setScaleWeight('');
                   setSelectedPlate('');
                   setSingleFoodId('');
                   setComboItems([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
                   setShowAddLog(false);
                   
-                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl">Log</button>
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Log Food</button>
               </div>
             </div>
           </div>
         )}
 
-        <button onClick={() => setShowAddLog(true)} className="fixed bottom-28 right-8 bg-emerald-600 text-white w-14 h-14 rounded-2xl shadow-xl flex items-center justify-center z-30"><Plus/></button>
+        {/* Floating Action Button */}
+        <button onClick={() => setShowAddLog(true)} className="fixed bottom-28 right-8 bg-emerald-600 text-white w-14 h-14 rounded-2xl shadow-[0_10px_25px_rgba(5,150,105,0.4)] flex items-center justify-center z-30 hover:scale-105 transition-transform"><Plus/></button>
       </div>
     </div>
   );
