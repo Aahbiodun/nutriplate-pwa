@@ -54,10 +54,10 @@ export default function App() {
   const [showAddFood, setShowAddFood] = useState(false);
   const [showAddLog, setShowAddLog] = useState(false);
 
-  // Combo Feature State
-  const [isCombo, setIsCombo] = useState(false);
-  const [comboWeight, setComboWeight] = useState('');
-  const [comboItems, setComboItems] = useState([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
+  // --- PLATE FEATURE STATE ---
+  const [isPlateMode, setIsPlateMode] = useState(false);
+  const [plateWeight, setPlateWeight] = useState('');
+  const [plateItems, setPlateItems] = useState([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
 
   useEffect(() => {
     if (!auth) return;
@@ -255,53 +255,54 @@ export default function App() {
           </div>
         )}
 
-        {/* RESTORED AND UPDATED LOG MODAL */}
+        {/* --- PLATE SELECTION MODAL --- */}
         {showAddLog && (
           <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
             <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 max-h-[90vh] overflow-y-auto">
               <h2 className="text-2xl font-black mb-6">Log weight</h2>
               
-              {/* Toggle Menu */}
+              {/* The Plate Toggle */}
               <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
                 <button 
-                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${!isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
-                  onClick={() => setIsCombo(false)}
-                >Single</button>
+                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${!isPlateMode ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  onClick={() => setIsPlateMode(false)}
+                >Single Food</button>
                 <button 
-                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${isCombo ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
-                  onClick={() => setIsCombo(true)}
-                >Combo (%)</button>
+                  className={`flex-1 py-2 font-bold rounded-xl text-sm transition-colors ${isPlateMode ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  onClick={() => setIsPlateMode(true)}
+                >Build a Plate</button>
               </div>
 
-              {!isCombo ? (
-                /* SINGLE LOG MODE */
+              {!isPlateMode ? (
+                /* SINGLE FOOD MODE */
                 <>
                   <select className="w-full bg-slate-100 rounded-2xl p-4 mb-3 outline-none" id="lf">
                     <option value="">Select Food...</option>
+                    {/* Alphabetically sorted dropdown */}
                     {[...foods].sort((a, b) => a.name.localeCompare(b.name)).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                   <input placeholder="Grams" type="number" className="w-full bg-slate-100 rounded-2xl p-4 mb-6 outline-none" id="lg" />
                 </>
               ) : (
-                /* COMBO PERCENTAGE MODE */
+                /* BUILD A PLATE MODE */
                 <>
                   <input 
-                    placeholder="Total Combo Weight (Grams)" 
+                    placeholder="Total Plate Weight (Grams)" 
                     type="number" 
                     className="w-full bg-slate-100 rounded-2xl p-4 mb-4 outline-none font-bold text-emerald-600" 
-                    value={comboWeight}
-                    onChange={e => setComboWeight(e.target.value)} 
+                    value={plateWeight}
+                    onChange={e => setPlateWeight(e.target.value)} 
                   />
                   <div className="space-y-3 mb-4">
-                    {comboItems.map((item, index) => (
+                    {plateItems.map((item, index) => (
                       <div key={index} className="flex gap-2 items-center">
                         <select 
                           className="flex-1 bg-slate-100 rounded-2xl p-3 outline-none text-sm"
                           value={item.foodId}
                           onChange={e => {
-                            const newItems = [...comboItems];
+                            const newItems = [...plateItems];
                             newItems[index].foodId = e.target.value;
-                            setComboItems(newItems);
+                            setPlateItems(newItems);
                           }}
                         >
                           <option value="">Food {index + 1}...</option>
@@ -310,39 +311,39 @@ export default function App() {
                         <input 
                           placeholder="%" 
                           type="number" 
-                          className="w-20 bg-slate-100 rounded-2xl p-3 outline-none text-center text-sm"
+                          className="w-20 bg-slate-100 rounded-2xl p-3 outline-none text-center text-sm font-bold"
                           value={item.percentage}
                           onChange={e => {
-                            const newItems = [...comboItems];
+                            const newItems = [...plateItems];
                             newItems[index].percentage = e.target.value;
-                            setComboItems(newItems);
+                            setPlateItems(newItems);
                           }}
                         />
                         {index > 1 && (
                           <button onClick={() => {
-                            const newItems = comboItems.filter((_, i) => i !== index);
-                            setComboItems(newItems);
+                            const newItems = plateItems.filter((_, i) => i !== index);
+                            setPlateItems(newItems);
                           }} className="text-slate-400 p-2 hover:text-red-500 transition-colors"><X size={16}/></button>
                         )}
                       </div>
                     ))}
                   </div>
                   <button 
-                    onClick={() => setComboItems([...comboItems, { foodId: '', percentage: '' }])}
+                    onClick={() => setPlateItems([...plateItems, { foodId: '', percentage: '' }])}
                     className="w-full text-xs font-bold text-emerald-600 mb-6 py-3 border-2 border-dashed border-emerald-100 rounded-xl hover:bg-emerald-50 transition-colors"
                   >
-                    + Add another food to combo
+                    + Add another food to plate
                   </button>
                 </>
               )}
 
               <div className="flex gap-3">
-                <button onClick={() => { setShowAddLog(false); setIsCombo(false); }} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
+                <button onClick={() => { setShowAddLog(false); setIsPlateMode(false); }} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
                 <button onClick={async () => {
                   if (!user) return;
                   
-                  if (!isCombo) {
-                    // Save Single Log
+                  if (!isPlateMode) {
+                    // Save Single Food
                     const fId = document.getElementById('lf').value;
                     const gms = document.getElementById('lg').value;
                     if (!fId || !gms) return;
@@ -351,20 +352,20 @@ export default function App() {
                       id, foodId: fId, amountGrams: parseFloat(gms), date: currentDate
                     });
                   } else {
-                    // Save Combo Log
-                    const totalW = parseFloat(comboWeight);
+                    // Save Plate
+                    const totalW = parseFloat(plateWeight);
                     if (!totalW || totalW <= 0) {
-                        alert("Please enter a valid total weight for the combo.");
+                        alert("Please enter a valid total weight for the plate.");
                         return;
                     }
-                    const totalPct = comboItems.reduce((sum, item) => sum + (parseFloat(item.percentage) || 0), 0);
+                    const totalPct = plateItems.reduce((sum, item) => sum + (parseFloat(item.percentage) || 0), 0);
                     if (Math.abs(totalPct - 100) > 0.1) {
-                        alert(`Your percentages must equal 100%. They currently equal ${totalPct}%.`);
+                        alert(`Your percentages must equal exactly 100%. They currently equal ${totalPct}%.`);
                         return;
                     }
                     
-                    // Log each item based on its percentage
-                    for (const item of comboItems) {
+                    // Log each item based on its percentage of the total plate weight
+                    for (const item of plateItems) {
                         if (item.foodId && parseFloat(item.percentage) > 0) {
                             const id = Math.random().toString(36).substr(2, 9);
                             const calculatedGrams = (parseFloat(item.percentage) / 100) * totalW;
@@ -376,13 +377,13 @@ export default function App() {
                             });
                         }
                     }
-                    // Reset combo state for next time
-                    setComboWeight('');
-                    setComboItems([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
+                    // Reset plate state for next time
+                    setPlateWeight('');
+                    setPlateItems([{ foodId: '', percentage: '' }, { foodId: '', percentage: '' }]);
                   }
                   
                   setShowAddLog(false);
-                  setIsCombo(false);
+                  setIsPlateMode(false);
                 }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl">Log</button>
               </div>
             </div>
