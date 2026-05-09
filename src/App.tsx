@@ -1,12 +1,12 @@
 // @ts-nocheck
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, Utensils, Plus, ChevronLeft, ChevronRight, 
-  X, Trash2, Disc, Loader2, BarChart3, AlertTriangle 
+  Trash2, Loader2, BarChart3, AlertTriangle 
 } from 'lucide-react';
 
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, collection, onSnapshot, doc, setDoc, 
@@ -15,19 +15,30 @@ import {
 
 // --- Firebase Config ---
 const customFirebaseConfig = {
-  // PASTE YOUR FIREBASE KEYS HERE
+apiKey: 'AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY',
+  authDomain: 'food-log-abc32.firebaseapp.com',
+  projectId: 'food-log-abc32',
+  storageBucket: 'food-log-abc32.firebasestorage.app',
+  messagingSenderId: '575042025031',
+  appId: '1:575042025031:web:f11b840bb418c3218da362',
+  measurementId: 'G-BEDGMLCDT8',
 };
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
 
+// Initialize Firebase only once
 let app, auth, db;
 if (Object.keys(firebaseConfig).length > 0) {
-  app = initializeApp(firebaseConfig);
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   auth = getAuth(app);
   db = getFirestore(app);
 
   // Persistence allows the app to work at the gym without signal
-  enableIndexedDbPersistence(db).catch(() => {});
+  if (typeof window !== 'undefined') {
+    enableIndexedDbPersistence(db).catch((err) => {
+      console.warn("Persistence failed:", err.code);
+    });
+  }
 }
 
 const appId = 'nutri-plate-final'; 
@@ -43,10 +54,17 @@ export default function App() {
   const [showAddLog, setShowAddLog] = useState(false);
 
   useEffect(() => {
+    if (!auth) return;
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
-      if (u) { setUser(u); } 
-      else {
-        try { await signInAnonymously(auth); } catch (e) { console.error(e); }
+      if (u) { 
+        setUser(u); 
+      } else {
+        try { 
+          const cred = await signInAnonymously(auth); 
+          setUser(cred.user);
+        } catch (e) { 
+          console.error("Auth error:", e); 
+        }
       }
     });
     return () => unsubAuth();
@@ -55,13 +73,16 @@ export default function App() {
   useEffect(() => {
     if (!user || !db) return;
     const userPath = `artifacts/${appId}/users/${user.uid}`;
+    
     const unsubFoods = onSnapshot(collection(db, `${userPath}/foods`), (s) => {
       setFoods(s.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+    
     const unsubLogs = onSnapshot(collection(db, `${userPath}/logs`), (s) => {
       setLogs(s.docs.map(d => ({ id: d.id, ...d.data() })));
       setIsLoading(false);
     });
+    
     return () => { unsubFoods(); unsubLogs(); };
   }, [user]);
 
@@ -74,11 +95,25 @@ export default function App() {
     };
   };
 
-  const dayLogs = logs.filter(l => l.date === currentDate);
-  const totals = dayLogs.reduce((acc, log) => {
+  const dayLogs = useMemo(() => logs.filter(l => l.date === currentDate), [logs, currentDate]);
+  
+  const totals = useMemo(() => dayLogs.reduce((acc, log) => {
     const n = getNutrients(log.foodId, log.amountGrams);
     return { c: acc.c + n.c, p: acc.p + n.p };
-  }, { c: 0, p: 0 });
+  }, { c: 0, p: 0 }), [dayLogs, foods]);
+
+  // Safety check: If Firebase isn't configured, show alert instead of blank screen
+  if (Object.keys(firebaseConfig).length === 0) {
+    return (
+      <div className="h-screen flex items-center justify-center p-10 text-center bg-slate-900 text-white">
+        <div>
+          <AlertTriangle className="mx-auto mb-4 text-yellow-500" size={48} />
+          <h2 className="text-xl font-bold">Config Missing</h2>
+          <p className="opacity-70">Please paste your Firebase keys into the code.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900 flex justify-center overflow-hidden overscroll-none select-none">
@@ -110,21 +145,27 @@ export default function App() {
           {activeTab === 'log' && (
             <div className="p-6 space-y-3 pb-32">
                 <h3 className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-2">Today's Intake</h3>
-                {dayLogs.map(l => (
-                    <div key={l.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between border items-center">
-                        <div>
-                          <span className="font-bold text-slate-700 block">{foods.find(f => f.id === l.foodId)?.name || 'Food'}</span>
-                          <span className="text-[10px] text-slate-400 font-bold">{l.amountGrams}g</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                           <div className="text-right">
-                              <div className="text-emerald-600 font-bold text-sm">{Math.round(getNutrients(l.foodId, l.amountGrams).c)} kcal</div>
-                              <div className="text-[10px] font-bold text-slate-400">{Math.round(getNutrients(l.foodId, l.amountGrams).p)}g P</div>
-                           </div>
-                           <button onClick={async () => await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/logs`, l.id))} className="text-slate-300"><Trash2 size={16}/></button>
-                        </div>
-                    </div>
-                ))}
+                {dayLogs.map(l => {
+                    const food = foods.find(f => f.id === l.foodId);
+                    const n = getNutrients(l.foodId, l.amountGrams);
+                    return (
+                      <div key={l.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between border items-center">
+                          <div>
+                            <span className="font-bold text-slate-700 block">{food?.name || 'Unknown Food'}</span>
+                            <span className="text-[10px] text-slate-400 font-bold">{l.amountGrams}g</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                             <div className="text-right">
+                                <div className="text-emerald-600 font-bold text-sm">{Math.round(n.c)} kcal</div>
+                                <div className="text-[10px] font-bold text-slate-400">{Math.round(n.p)}g P</div>
+                             </div>
+                             <button onClick={async () => {
+                               if (user) await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/logs`, l.id));
+                             }} className="text-slate-300"><Trash2 size={16}/></button>
+                          </div>
+                      </div>
+                    );
+                })}
             </div>
           )}
 
@@ -187,11 +228,15 @@ export default function App() {
               <div className="flex gap-3">
                 <button onClick={() => setShowAddFood(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
                 <button onClick={async () => {
-                  const id = generateId();
+                  const name = document.getElementById('fn').value;
+                  const cals = document.getElementById('fc').value;
+                  const prot = document.getElementById('fp').value;
+                  if (!name || !cals || !user) return;
+                  const id = Math.random().toString(36).substr(2, 9);
                   await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/foods`, id), {
-                    id, name: document.getElementById('fn').value, 
-                    caloriesPer100g: parseFloat(document.getElementById('fc').value),
-                    proteinPer100g: parseFloat(document.getElementById('fp').value)
+                    id, name, 
+                    caloriesPer100g: parseFloat(cals),
+                    proteinPer100g: parseFloat(prot || 0)
                   });
                   setShowAddFood(false);
                 }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl">Save</button>
@@ -212,10 +257,13 @@ export default function App() {
               <div className="flex gap-3">
                 <button onClick={() => setShowAddLog(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl">Cancel</button>
                 <button onClick={async () => {
-                  const id = generateId();
+                  const fId = document.getElementById('lf').value;
+                  const gms = document.getElementById('lg').value;
+                  if (!fId || !gms || !user) return;
+                  const id = Math.random().toString(36).substr(2, 9);
                   await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/logs`, id), {
-                    id, foodId: document.getElementById('lf').value, 
-                    amountGrams: parseFloat(document.getElementById('lg').value),
+                    id, foodId: fId, 
+                    amountGrams: parseFloat(gms),
                     date: currentDate
                   });
                   setShowAddLog(false);
