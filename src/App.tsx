@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, Utensils, Plus, ChevronLeft, ChevronRight, 
-  Trash2, Loader2, BarChart3, AlertTriangle, X, Edit2 
+  Trash2, Loader2, BarChart3, AlertTriangle, X, Edit2, Target 
 } from 'lucide-react';
 
 import { initializeApp, getApps } from 'firebase/app';
@@ -15,7 +15,7 @@ import {
 
 // --- Firebase Config ---
 const customFirebaseConfig = {
- apiKey: 'AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY',
+  apiKey: 'AIzaSyDvjWr4zwwbLCaKB0HA8lrJpf_dccx2DPY',
   authDomain: 'food-log-abc32.firebaseapp.com',
   projectId: 'food-log-abc32',
   storageBucket: 'food-log-abc32.firebasestorage.app',
@@ -55,9 +55,13 @@ export default function App() {
   const [plates, setPlates] = useState([]); 
   const [logs, setLogs] = useState([]);
   
+  // Goal States
+  const [calorieTarget, setCalorieTarget] = useState(2500); // Default Target
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  
   // Modal States
   const [showAddFood, setShowAddFood] = useState(false);
-  const [editingFood, setEditingFood] = useState(null); // NEW: State for editing food
+  const [editingFood, setEditingFood] = useState(null); 
   const [showAddPlate, setShowAddPlate] = useState(false); 
   const [showAddLog, setShowAddLog] = useState(false);
 
@@ -102,8 +106,15 @@ export default function App() {
       setLogs(s.docs.map(d => ({ id: d.id, ...d.data() })));
       setIsLoading(false);
     });
+
+    // Sync Goals
+    const unsubSettings = onSnapshot(doc(db, `${userPath}/settings/goals`), (d) => {
+      if (d.exists() && d.data().calorieTarget) {
+        setCalorieTarget(d.data().calorieTarget);
+      }
+    });
     
-    return () => { unsubFoods(); unsubPlates(); unsubLogs(); };
+    return () => { unsubFoods(); unsubPlates(); unsubLogs(); unsubSettings(); };
   }, [user, db]);
 
   const getNutrients = (foodId, grams) => {
@@ -121,6 +132,8 @@ export default function App() {
     const n = getNutrients(log.foodId, log.amountGrams);
     return { c: acc.c + n.c, p: acc.p + n.p };
   }, { c: 0, p: 0 }), [dayLogs, foods]);
+
+  const remainingCals = calorieTarget - Math.round(totals.c);
 
   if (Object.keys(firebaseConfig).length === 0) {
     return (
@@ -144,15 +157,40 @@ export default function App() {
              <button onClick={() => {
                const d = new Date(currentDate); d.setDate(d.getDate()-1); setCurrentDate(d.toISOString().split('T')[0]);
              }}><ChevronLeft/></button>
-             <span className="font-bold text-xs uppercase tracking-widest">{currentDate}</span>
+             
+             {/* Date & Target Settings Button */}
+             <div 
+               onClick={() => setShowTargetModal(true)} 
+               className="flex items-center gap-2 cursor-pointer hover:bg-emerald-500/50 px-3 py-1.5 rounded-full transition-colors"
+             >
+                <span className="font-bold text-xs uppercase tracking-widest">{currentDate}</span>
+                <Target size={14} className="text-emerald-200" />
+             </div>
+
              <button onClick={() => {
                const d = new Date(currentDate); d.setDate(d.getDate()+1); setCurrentDate(d.toISOString().split('T')[0]);
              }}><ChevronRight/></button>
           </div>
+          
           <div className="text-center">
-            <div className="text-6xl font-black">{Math.round(totals.c)}<span className="text-lg ml-1 font-normal opacity-70">kcal</span></div>
-            <div className="mt-2 bg-emerald-700/40 inline-block px-5 py-1.5 rounded-full text-sm font-bold border border-emerald-500/30">
-              {Math.round(totals.p)}g Protein
+            {/* Calories / Target */}
+            <div className="flex justify-center items-baseline gap-1">
+              <span className="text-6xl font-black">{Math.round(totals.c)}</span>
+              <span className="text-2xl font-bold text-emerald-200 opacity-80">/{calorieTarget}</span>
+            </div>
+            
+            {/* Badges: Protein & Remaining Balance */}
+            <div className="mt-4 flex justify-center gap-2">
+              <div className="bg-emerald-700/40 px-4 py-1.5 rounded-xl text-xs font-bold border border-emerald-500/30 shadow-sm">
+                {Math.round(totals.p)}g Protein
+              </div>
+              <div className={`px-4 py-1.5 rounded-xl text-xs font-bold border shadow-sm transition-colors ${
+                remainingCals >= 0 
+                  ? 'bg-emerald-700/40 border-emerald-500/30 text-white' 
+                  : 'bg-red-500/90 border-red-400 text-white shadow-red-500/30'
+              }`}>
+                {Math.abs(remainingCals)} kcal {remainingCals >= 0 ? 'Left' : 'Over'}
+              </div>
             </div>
           </div>
         </div>
@@ -276,6 +314,34 @@ export default function App() {
         </div>
 
         {/* --- MODALS --- */}
+
+        {/* Modal: Set Calorie Target */}
+        {showTargetModal && (
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
+              <h2 className="text-2xl font-black mb-2">Daily Goal</h2>
+              <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed">Set your calorie target for your body recomposition.</p>
+              <input 
+                placeholder="Target (e.g. 2500)" 
+                type="number" 
+                defaultValue={calorieTarget}
+                className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors text-emerald-600 font-bold" 
+                id="ct" 
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setShowTargetModal(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={async () => {
+                  const target = document.getElementById('ct').value;
+                  if (!target || !user) return;
+                  await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/settings`, 'goals'), {
+                    calorieTarget: parseFloat(target)
+                  }, { merge: true });
+                  setShowTargetModal(false);
+                }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Save</button>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Modal: Add Food */}
         {showAddFood && (
