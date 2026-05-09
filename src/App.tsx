@@ -41,7 +41,7 @@ if (Object.keys(firebaseConfig).length > 0) {
   }
 }
 
-const appId = 'nutri-plate-final'; 
+const appId = 'nutriplate_aahbiodun_stable'; 
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('log'); 
