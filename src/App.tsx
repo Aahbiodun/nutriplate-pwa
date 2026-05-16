@@ -81,6 +81,7 @@ export default function App() {
   const [plates, setPlates] = useState([]);
   const [logs, setLogs] = useState([]);
   const [calorieTarget, setCalorieTarget] = useState(2500);
+  const [currentWeight, setCurrentWeight] = useState(null);
 
   // Modal states
   const [showSettings, setShowSettings] = useState(false);
@@ -133,7 +134,10 @@ export default function App() {
       setIsLoading(false);
     });
     const unsubSettings = onSnapshot(doc(db, `${userPath}/settings/goals`), d => {
-      if (d.exists() && d.data().calorieTarget) setCalorieTarget(d.data().calorieTarget);
+      if (d.exists()) {
+        if (d.data().calorieTarget) setCalorieTarget(d.data().calorieTarget);
+        if (d.data().currentWeight) setCurrentWeight(d.data().currentWeight);
+      }
     });
     return () => { unsubFoods(); unsubPlates(); unsubLogs(); unsubSettings(); };
   }, [user]);
@@ -540,7 +544,9 @@ export default function App() {
                         {weeklyStats.balance <= 0 ? '−' : '+'}{Math.abs(Math.round(weeklyStats.balance)).toLocaleString()} kcal
                       </div>
                       <div className="text-xs text-slate-500 mt-1">
-                        ≈ {weeklyStats.projectedKg.toFixed(2)} kg projected fat {weeklyStats.balance <= 0 ? 'loss' : 'gain'}
+                        {currentWeight
+                          ? `${currentWeight}kg → ${(currentWeight + (weeklyStats.balance / 7700)).toFixed(2)}kg projected`
+                          : `≈ ${weeklyStats.projectedKg.toFixed(2)} kg projected weight ${weeklyStats.balance <= 0 ? 'loss' : 'gain'}`}
                       </div>
                     </div>
                     <div className="text-right">
@@ -584,19 +590,34 @@ export default function App() {
           <ModalShell onClose={() => setShowSettings(false)}>
             <h2 className="text-2xl font-bold mb-2">Daily Goal</h2>
             <p className="text-xs text-slate-400 mb-6 leading-relaxed">Set your calorie target. This drives the deficit calculation in Trends.</p>
+
+            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">Calorie Target</label>
             <input
               type="number"
               defaultValue={calorieTarget}
-              className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors text-emerald-600 font-bold"
+              className="w-full bg-slate-50 rounded-2xl p-4 mb-4 outline-none border border-slate-100 focus:border-emerald-500 transition-colors text-emerald-600 font-bold"
               id="ct"
             />
+
+            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">Current Weight (kg)</label>
+            <input
+              type="number"
+              step="0.1"
+              defaultValue={currentWeight || ''}
+              placeholder="e.g. 90"
+              className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors text-emerald-600 font-bold"
+              id="cw"
+            />
+
             <div className="flex gap-3">
               <button onClick={() => setShowSettings(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
               <button onClick={async () => {
                 const target = document.getElementById('ct').value;
+                const weight = document.getElementById('cw').value;
                 if (!target || !user) return;
                 await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/settings`, 'goals'), {
-                  calorieTarget: parseFloat(target)
+                  calorieTarget: parseFloat(target),
+                  currentWeight: weight ? parseFloat(weight) : null,
                 }, { merge: true });
                 setShowSettings(false);
               }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Save</button>
