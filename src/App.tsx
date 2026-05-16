@@ -81,7 +81,7 @@ export default function App() {
   const [plates, setPlates] = useState([]);
   const [logs, setLogs] = useState([]);
   const [calorieTarget, setCalorieTarget] = useState(2500);
-  const [currentWeight, setCurrentWeight] = useState(null);
+  const [maintenanceCalories, setMaintenanceCalories] = useState(null);
 
   // Modal states
   const [showSettings, setShowSettings] = useState(false);
@@ -136,7 +136,7 @@ export default function App() {
     const unsubSettings = onSnapshot(doc(db, `${userPath}/settings/goals`), d => {
       if (d.exists()) {
         if (d.data().calorieTarget) setCalorieTarget(d.data().calorieTarget);
-        if (d.data().currentWeight) setCurrentWeight(d.data().currentWeight);
+        if (d.data().maintenanceCalories) setMaintenanceCalories(d.data().maintenanceCalories);
       }
     });
     return () => { unsubFoods(); unsubPlates(); unsubLogs(); unsubSettings(); };
@@ -181,11 +181,12 @@ export default function App() {
   const weeklyStats = useMemo(() => {
     const tracked = weekData.filter(d => d.tracked);
     const totalCals = tracked.reduce((s, d) => s + d.calories, 0);
-    const targetTotal = calorieTarget * tracked.length;
-    const balance = totalCals - targetTotal; // negative = deficit (good)
-    const projectedKg = Math.abs(balance) / 7700;
-    return { trackedDays: tracked.length, balance, projectedKg };
-  }, [weekData, calorieTarget]);
+    const targetBalance = totalCals - (calorieTarget * tracked.length);
+    const maintenanceDeficit = maintenanceCalories
+      ? totalCals - (maintenanceCalories * tracked.length)
+      : null;
+    return { trackedDays: tracked.length, targetBalance, maintenanceDeficit };
+  }, [weekData, calorieTarget, maintenanceCalories]);
 
   // Recent foods (from log history)
   const recentFoodIds = useMemo(() => {
@@ -524,36 +525,59 @@ export default function App() {
                 />
               </div>
 
-              {/* Deficit banner */}
+              {/* Stats banner */}
               {weeklyStats.trackedDays > 0 && chartMode === 'calories' && (
-                <div className={`rounded-3xl p-5 border ${
-                  weeklyStats.balance <= 0
-                    ? 'bg-emerald-50 border-emerald-100'
-                    : 'bg-red-50 border-red-100'
-                }`}>
-                  <div className="flex justify-between items-start">
+                <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm space-y-4">
+
+                  {/* Maintenance Deficit (only if maintenance is set) */}
+                  {weeklyStats.maintenanceDeficit !== null && (
                     <div>
-                      <div className={`text-[10px] uppercase tracking-wider font-bold ${
-                        weeklyStats.balance <= 0 ? 'text-emerald-700' : 'text-red-700'
-                      }`}>
-                        Weekly {weeklyStats.balance <= 0 ? 'Deficit' : 'Surplus'}
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Weekly Deficit</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">vs maintenance · {maintenanceCalories} kcal/day</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Days</div>
+                          <div className="text-sm font-bold text-slate-700 mt-0.5">{weeklyStats.trackedDays}<span className="text-slate-400">/7</span></div>
+                        </div>
                       </div>
-                      <div className={`text-3xl font-bold mt-1 ${
-                        weeklyStats.balance <= 0 ? 'text-emerald-800' : 'text-red-800'
-                      }`}>
-                        {weeklyStats.balance <= 0 ? '−' : '+'}{Math.abs(Math.round(weeklyStats.balance)).toLocaleString()} kcal
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {currentWeight
-                          ? `${currentWeight}kg → ${(currentWeight + (weeklyStats.balance / 7700)).toFixed(2)}kg projected`
-                          : `≈ ${weeklyStats.projectedKg.toFixed(2)} kg projected weight ${weeklyStats.balance <= 0 ? 'loss' : 'gain'}`}
+                      <div className={`text-3xl font-bold ${weeklyStats.maintenanceDeficit <= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {weeklyStats.maintenanceDeficit <= 0 ? '−' : '+'}{Math.abs(Math.round(weeklyStats.maintenanceDeficit)).toLocaleString()} kcal
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Days tracked</div>
-                      <div className="text-xl font-bold text-slate-700 mt-1">{weeklyStats.trackedDays}<span className="text-sm text-slate-400">/7</span></div>
+                  )}
+
+                  {/* Target Balance */}
+                  <div className={weeklyStats.maintenanceDeficit !== null ? 'pt-4 border-t border-slate-100' : ''}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Target Balance</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">vs target · {calorieTarget} kcal/day</div>
+                      </div>
+                      {weeklyStats.maintenanceDeficit === null && (
+                        <div className="text-right">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Days</div>
+                          <div className="text-sm font-bold text-slate-700 mt-0.5">{weeklyStats.trackedDays}<span className="text-slate-400">/7</span></div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <div className={`text-2xl font-bold ${weeklyStats.targetBalance <= 0 ? 'text-emerald-700' : 'text-amber-600'}`}>
+                        {weeklyStats.targetBalance <= 0 ? '−' : '+'}{Math.abs(Math.round(weeklyStats.targetBalance)).toLocaleString()} kcal
+                      </div>
+                      <div className={`text-[11px] font-bold ${weeklyStats.targetBalance <= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {weeklyStats.targetBalance <= 0 ? 'banked buffer' : 'over budget'}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Hint if maintenance not set */}
+                  {weeklyStats.maintenanceDeficit === null && (
+                    <div className="text-[10px] text-slate-400 italic pt-3 border-t border-slate-100">
+                      Set maintenance calories in Settings to see your actual weekly deficit.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -589,9 +613,9 @@ export default function App() {
         {showSettings && (
           <ModalShell onClose={() => setShowSettings(false)}>
             <h2 className="text-2xl font-bold mb-2">Daily Goal</h2>
-            <p className="text-xs text-slate-400 mb-6 leading-relaxed">Set your calorie target. This drives the deficit calculation in Trends.</p>
+            <p className="text-xs text-slate-400 mb-6 leading-relaxed">Set your calorie targets. Maintenance is what you burn at rest; fat-loss target is what you aim to eat.</p>
 
-            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">Calorie Target</label>
+            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">Fat Loss Target (kcal/day)</label>
             <input
               type="number"
               defaultValue={calorieTarget}
@@ -599,25 +623,24 @@ export default function App() {
               id="ct"
             />
 
-            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">Current Weight (kg)</label>
+            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 block">Maintenance Calories (kcal/day)</label>
             <input
               type="number"
-              step="0.1"
-              defaultValue={currentWeight || ''}
-              placeholder="e.g. 90"
+              defaultValue={maintenanceCalories || ''}
+              placeholder="e.g. 3000"
               className="w-full bg-slate-50 rounded-2xl p-4 mb-6 outline-none border border-slate-100 focus:border-emerald-500 transition-colors text-emerald-600 font-bold"
-              id="cw"
+              id="mc"
             />
 
             <div className="flex gap-3">
               <button onClick={() => setShowSettings(false)} className="flex-1 bg-slate-100 font-bold p-4 rounded-2xl text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
               <button onClick={async () => {
                 const target = document.getElementById('ct').value;
-                const weight = document.getElementById('cw').value;
+                const maint = document.getElementById('mc').value;
                 if (!target || !user) return;
                 await setDoc(doc(db, `artifacts/${appId}/users/${MY_PERMANENT_UID}/settings`, 'goals'), {
                   calorieTarget: parseFloat(target),
-                  currentWeight: weight ? parseFloat(weight) : null,
+                  maintenanceCalories: maint ? parseFloat(maint) : null,
                 }, { merge: true });
                 setShowSettings(false);
               }} className="flex-1 bg-emerald-600 text-white font-bold p-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/30">Save</button>
